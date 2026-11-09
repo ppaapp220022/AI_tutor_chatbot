@@ -32,3 +32,5 @@ uploads/
 # 로그
 *.log
 logs/
+# 평가 결과
+eval/results/
