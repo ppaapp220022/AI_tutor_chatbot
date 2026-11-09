@@ -184,8 +184,9 @@ def test_follow_up_without_file_skips_unreadable_room_document(db, monkeypatch, 
     assert len(list_messages_by_room(db, room.id, offset=0, limit=100)) == 4
     # 문서 없이 답했다는 것을 사용자에게 알린다
     assert "fake.pdf" in result["document_notice"]
-    # 모델에게도 문서를 읽지 못했다고 알린다
-    assert any(str(m["content"]).startswith("[업로드된 PDF 문서를 읽지 못함]") for m in sent[-1])
+    # 모델에게도 문서를 읽지 못했다고 알린다. 이전 대화 흐름을 따라가지 않게 지금 질문 바로 앞에 둔다
+    assert str(sent[-1][-2]["content"]).startswith("[업로드된 PDF 문서를 읽지 못함]")
+    assert sent[-1][-1] == {"role": "user", "content": "다음 질문이야."}
 
 
 def test_follow_up_without_file_ignores_document_outside_room(db, monkeypatch, upload_dir):

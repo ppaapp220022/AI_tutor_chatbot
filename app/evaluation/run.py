@@ -173,7 +173,7 @@ def format_summary(summary: dict[str, dict[str, int]]) -> str:
 
 
 def prompt_version() -> str:
-    # 페르소나 프롬프트, 문서 머리말, 문서를 못 읽었을 때의 안내, 긴 문서에서 고르는 방식이 바뀌면 버전이 바뀐다
+    # 페르소나 프롬프트, 문서 머리말, 문서를 못 읽었을 때의 안내, 긴 문서에서 고르는 방식, 메시지 순서가 바뀌면 버전이 바뀐다
     text = (
         json.dumps(PERSONA_PROMPT_MAP, ensure_ascii=False, sort_keys=True)
         + str(MAX_FILE_CONTEXT_LENGTH)
@@ -181,6 +181,7 @@ def prompt_version() -> str:
         + PARTIAL_FILE_CONTEXT_HEADER
         + DOCUMENT_UNREADABLE_PROMPT
         + inspect.getsource(document_context_service)
+        + inspect.getsource(build_openai_messages)
     )
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
