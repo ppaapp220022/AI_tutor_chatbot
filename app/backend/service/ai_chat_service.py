@@ -28,6 +28,7 @@ from app.backend.service.messages_service import (
 )
 from app.backend.service.uploaded_files_service import (
     get_latest_uploaded_file_service,
+    resolve_upload_path,
     save_upload_file_service,
 )
 
@@ -113,7 +114,7 @@ def _load_room_file_text(db, room_id: int, login_id: str | None) -> str:
     if not latest or not latest.file_path:
         return ""
     try:
-        return extract_text_from_file(latest.file_path)
+        return extract_text_from_file(str(resolve_upload_path(room_id, latest.file_path)))
     except ValueError as exc:
         # 이번 요청에 올린 파일이 아니므로 질문 자체는 막지 않고 문서 없이 답한다
         logger.warning(f"대화방 문서를 읽지 못함 - room_id: {room_id}, uploaded_id: {latest.id}, {exc}")
@@ -228,7 +229,7 @@ def handle_chat_request_service(
         if upload_file is not None:
             uploaded = save_upload_file_service(db, room_id, upload_file, commit=False, login_id=login_id)
             try:
-                file_text = extract_text_from_file(uploaded.file_path)
+                file_text = extract_text_from_file(str(resolve_upload_path(room_id, uploaded.file_path)))
             except ValueError as exc:
                 raise BadRequestException(str(exc)) from exc
         else:

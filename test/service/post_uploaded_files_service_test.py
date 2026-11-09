@@ -1,8 +1,18 @@
 from io import BytesIO
 from pathlib import Path
 
+import pytest
+
+from app.backend.exception import BadRequestException
 from app.backend.model.users import Users, Role
-from app.backend.service.uploaded_files_service import post_uploaded_files_service, save_upload_file_service
+from app.backend.service.uploaded_files_service import (
+    PROJECT_ROOT,
+    UPLOAD_DIR,
+    patch_uploaded_files_service,
+    post_uploaded_files_service,
+    resolve_upload_path,
+    save_upload_file_service,
+)
 from app.backend.service.chat_room_service import post_chat_room_service
 from app.backend.repository.user_repository import create_users
 
@@ -31,7 +41,7 @@ class DummyUploadFile:
         self.file = BytesIO(content)
 
 
-def test_save_upload_file_service(db):
+def test_save_upload_file_service(db, upload_dir):
     user = create_users(db, make_user('user1', '1234', 'user1@example.com'))
     room = post_chat_room_service(db, user.id, 'test', 'test persona')
 
@@ -44,3 +54,41 @@ def test_save_upload_file_service(db):
     assert saved.file_name == "test.pdf"
     assert saved.file_path is not None
     assert Path(saved.file_path).exists()
+    # 실행 위치(cwd)와 상관없이 읽히도록 절대 경로로 저장한다
+    assert Path(saved.file_path).is_absolute()
+    assert Path(saved.file_path).parent == UPLOAD_DIR / str(room.id)
+
+
+def test_save_upload_file_service_strips_folder_from_file_name(db, upload_dir):
+    user = create_users(db, make_user('user1', '1234', 'user1@example.com'))
+    room = post_chat_room_service(db, user.id, 'test', 'test persona')
+
+    saved = save_upload_file_service(db, room.id, DummyUploadFile("../../evil.pdf", b"%PDF-1.4"))
+
+    assert Path(saved.file_path).parent == UPLOAD_DIR / str(room.id)
+    assert saved.file_path.endswith("_evil.pdf")
+
+
+def test_resolve_upload_path_reads_legacy_relative_path():
+    legacy_path = f"{UPLOAD_DIR.relative_to(PROJECT_ROOT)}/13/old.pdf"
+
+    assert resolve_upload_path(13, legacy_path) == UPLOAD_DIR / "13" / "old.pdf"
+
+
+@pytest.mark.parametrize("file_path", [
+    "/etc/passwd",
+    "uploads/14/other_room.pdf",
+    "uploads/13/../14/other_room.pdf",
+])
+def test_resolve_upload_path_rejects_outside_room(file_path):
+    with pytest.raises(ValueError):
+        resolve_upload_path(13, file_path)
+
+
+def test_patch_uploaded_files_service_rejects_outside_room(db, upload_dir):
+    user = create_users(db, make_user('user1', '1234', 'user1@example.com'))
+    room = post_chat_room_service(db, user.id, 'test', 'test persona')
+    saved = save_upload_file_service(db, room.id, DummyUploadFile("test.pdf", b"%PDF-1.4"))
+
+    with pytest.raises(BadRequestException):
+        patch_uploaded_files_service(db, room.id, saved.id, "x.pdf", str(UPLOAD_DIR / "999" / "x.pdf"))

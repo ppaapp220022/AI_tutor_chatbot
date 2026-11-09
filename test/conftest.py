@@ -1,9 +1,9 @@
 import pytest
-from pathlib import Path
 import shutil
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.backend.database import Base
+from app.backend.service.uploaded_files_service import UPLOAD_DIR
 
 # 테스트용 DB
 TEST_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ai_tutor_chatbot_test"
@@ -24,7 +24,7 @@ def db():
 
 @pytest.fixture
 def upload_dir():
-    upload_path = Path("uploads")
+    upload_path = UPLOAD_DIR
     upload_path.mkdir(parents=True, exist_ok=True)
 
     for child in upload_path.iterdir():
