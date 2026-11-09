@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.backend.database import get_db
+from app.backend.database import get_db, redis_client
 from app.backend.dependencies import get_current_users
 from app.backend.schema.ai_chat_schema import AiChatResponse
 from app.backend.service.ai_chat_service import handle_chat_request_service
+from app.backend.service.rate_limit_service import check_ai_chat_rate_limit
 
 router = APIRouter(
     prefix="/chat-rooms/{room_id}/AiChat",
@@ -15,7 +16,7 @@ router = APIRouter(
              response_model=AiChatResponse,
              status_code=status.HTTP_200_OK,
              summary="AI 채팅 시작",
-             description="AI 채팅 객체를 생성합니다."
+             description="AI 채팅 객체를 생성합니다. 사용자별 요청 횟수를 넘으면 429를 돌려줍니다."
              )
 def chat_with_ai(
     room_id: int,
@@ -33,4 +34,5 @@ def chat_with_ai(
     :param db: 세션
     :return: AI 응답 결과
     """
+    check_ai_chat_rate_limit(redis_client, login_id)
     return handle_chat_request_service(db, room_id, message, file, login_id=login_id)
