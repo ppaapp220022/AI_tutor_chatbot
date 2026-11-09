@@ -6,8 +6,6 @@ import pytest
 from app.backend.exception import BadRequestException
 from app.backend.model.users import Users, Role
 from app.backend.service.uploaded_files_service import (
-    PROJECT_ROOT,
-    UPLOAD_DIR,
     patch_uploaded_files_service,
     post_uploaded_files_service,
     resolve_upload_path,
@@ -56,7 +54,7 @@ def test_save_upload_file_service(db, upload_dir):
     assert Path(saved.file_path).exists()
     # 실행 위치(cwd)와 상관없이 읽히도록 절대 경로로 저장한다
     assert Path(saved.file_path).is_absolute()
-    assert Path(saved.file_path).parent == UPLOAD_DIR / str(room.id)
+    assert Path(saved.file_path).parent == upload_dir / str(room.id)
 
 
 def test_save_upload_file_service_strips_folder_from_file_name(db, upload_dir):
@@ -65,14 +63,15 @@ def test_save_upload_file_service_strips_folder_from_file_name(db, upload_dir):
 
     saved = save_upload_file_service(db, room.id, DummyUploadFile("../../evil.pdf", b"%PDF-1.4"))
 
-    assert Path(saved.file_path).parent == UPLOAD_DIR / str(room.id)
+    assert Path(saved.file_path).parent == upload_dir / str(room.id)
     assert saved.file_path.endswith("_evil.pdf")
 
 
-def test_resolve_upload_path_reads_legacy_relative_path():
-    legacy_path = f"{UPLOAD_DIR.relative_to(PROJECT_ROOT)}/13/old.pdf"
+def test_resolve_upload_path_reads_legacy_relative_path(upload_dir, monkeypatch):
+    # 예전 행은 프로젝트 루트 기준 'uploads/13/...'로 저장돼 있다
+    monkeypatch.setattr("app.backend.service.uploaded_files_service.PROJECT_ROOT", upload_dir.parent)
 
-    assert resolve_upload_path(13, legacy_path) == UPLOAD_DIR / "13" / "old.pdf"
+    assert resolve_upload_path(13, "uploads/13/old.pdf") == upload_dir / "13" / "old.pdf"
 
 
 @pytest.mark.parametrize("file_path", [
@@ -91,4 +90,4 @@ def test_patch_uploaded_files_service_rejects_outside_room(db, upload_dir):
     saved = save_upload_file_service(db, room.id, DummyUploadFile("test.pdf", b"%PDF-1.4"))
 
     with pytest.raises(BadRequestException):
-        patch_uploaded_files_service(db, room.id, saved.id, "x.pdf", str(UPLOAD_DIR / "999" / "x.pdf"))
+        patch_uploaded_files_service(db, room.id, saved.id, "x.pdf", str(upload_dir / "999" / "x.pdf"))
