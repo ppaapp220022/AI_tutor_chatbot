@@ -10,7 +10,7 @@ from app.backend.service.ai_chat_service import (
     build_openai_messages,
 )
 from app.evaluation import run
-from app.evaluation.judge import Verdict, parse_verdict
+from app.evaluation.judge import Verdict, build_judge_input, parse_verdict
 from app.evaluation.run import DOCUMENTS, KINDS, load_cases, load_document, run_one
 
 CASES = load_cases()
@@ -26,6 +26,12 @@ def test_cases_are_well_formed():
         assert all((DOCUMENTS / name).is_file() for name in case["documents"]), case["id"]
         if case["kind"] == "persona":
             assert case.get("persona_check"), case["id"]
+        if case["kind"] == "follow_up":
+            assert case.get("history"), case["id"]
+        # 이전 대화는 학생부터 번갈아 나오고, 마지막은 튜터 답이다(지금 질문이 다음 학생 차례)
+        history = case.get("history", [])
+        assert [turn["role"] for turn in history] == ["user", "assistant"] * (len(history) // 2), case["id"]
+        assert all(turn["content"].strip() for turn in history), case["id"]
 
 
 def test_only_long_doc_cases_exceed_context_limit():
@@ -86,3 +92,31 @@ def test_run_one_statuses(monkeypatch):
     monkeypatch.setattr(run, "request_chat_completion", raise_openai_error)
     result = run_one(case)
     assert (result.status, result.error) == ("generation_error", "요청 실패")
+
+
+def test_follow_up_history_reaches_tutor_and_judge(monkeypatch):
+    case = next(c for c in CASES if c.get("history"))
+    sent: list[list] = []
+
+    def fake_completion(messages):
+        sent.append(messages)
+        return "답변"
+
+    monkeypatch.setattr(run, "request_chat_completion", fake_completion)
+    monkeypatch.setattr(run, "judge", lambda c, d, a: Verdict(True, False, False, "맞음"))
+    run_one(case)
+
+    # 튜터에게는 서비스와 같은 순서(시스템, 문서, 이전 대화, 지금 질문)로 간다
+    turns = [(m["role"], m["content"]) for m in sent[0] if m["role"] != "system"]
+    expected = [(t["role"], t["content"]) for t in case["history"]] + [("user", case["question"])]
+    assert turns == expected
+
+    judge_input = build_judge_input(case, load_document(case), "답변")
+    assert "[이전 대화]" in judge_input
+    assert all(turn["content"] in judge_input for turn in case["history"])
+
+
+def test_judge_input_without_history_has_no_history_section():
+    case = next(c for c in CASES if not c.get("history"))
+
+    assert "[이전 대화]" not in build_judge_input(case, load_document(case), "답변")

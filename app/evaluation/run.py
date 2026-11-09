@@ -25,6 +25,7 @@ from pathlib import Path
 
 from openai import OpenAIError
 
+from app.backend.model.messages import Messages, Role
 from app.backend.service import document_context_service
 from app.backend.service.ai_chat_service import (
     FILE_CONTEXT_HEADER,
@@ -40,7 +41,13 @@ EVAL_DIR = Path(__file__).resolve().parents[2] / "eval"
 CASES = EVAL_DIR / "cases.jsonl"
 DOCUMENTS = EVAL_DIR / "documents"
 RESULTS = EVAL_DIR / "results"
-KINDS = {"in_doc": "문서 안", "out_of_doc": "문서 밖", "persona": "페르소나", "long_doc": "긴 문서"}
+KINDS = {
+    "in_doc": "문서 안",
+    "out_of_doc": "문서 밖",
+    "persona": "페르소나",
+    "long_doc": "긴 문서",
+    "follow_up": "이어지는 질문",
+}
 
 
 @dataclass
@@ -83,6 +90,16 @@ def load_document(case: dict) -> str:
     return "\n\n".join((DOCUMENTS / name).read_text() for name in case["documents"])
 
 
+def load_history(case: dict) -> list[Messages]:
+    """
+    문항의 이전 대화를 서비스가 쓰는 메시지 객체로 바꾼다 (DB에 저장하지 않는다)
+    :param case: 평가 문항
+    :return: 이전 대화 메시지 목록. 없으면 빈 목록
+    """
+    roles = {"user": Role.USER, "assistant": Role.Assistant}
+    return [Messages(role=roles[turn["role"]], content=turn["content"]) for turn in case.get("history", [])]
+
+
 def run_one(case: dict) -> Result:
     """
     문항 하나 실행 후 채점
@@ -92,7 +109,7 @@ def run_one(case: dict) -> Result:
     start = time.monotonic()
     result = Result(id=case["id"], kind=case["kind"], persona=case["persona"], status="fail")
     document = load_document(case)
-    messages = build_openai_messages([], case["question"], document, case["persona"])
+    messages = build_openai_messages(load_history(case), case["question"], document, case["persona"])
     try:
         result.answer = request_chat_completion(messages)
     except OpenAIError as exc:

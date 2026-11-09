@@ -29,6 +29,10 @@ JUDGE_SYSTEM_PROMPT = """너는 학습지(문서)를 바탕으로 답하는 AI �
 
 KIND_CRITERIA = {
     "out_of_doc": "문서에 답이 없는 질문이다. correct는 튜터가 해당 내용이 문서에 없다고 밝혔으면 true다.",
+    "follow_up": (
+        "이전 대화에 이어지는 질문이다. correct는 질문이 가리키는 대상을 이전 대화에서 바르게 이어받아 "
+        "기준 답의 핵심 내용을 빠짐없이, 틀리지 않게 담았으면 true다."
+    ),
 }
 DEFAULT_CRITERIA = "문서에 답이 있는 질문이다. correct는 기준 답의 핵심 내용을 빠짐없이, 틀리지 않게 담았으면 true다."
 
@@ -83,9 +87,13 @@ def build_judge_input(case: dict, document: str, answer: str) -> str:
     :param answer: 튜터 답변
     :return: judge 사용자 메시지
     """
+    history = "".join(
+        f"{'학생' if turn['role'] == 'user' else '튜터'}: {turn['content']}\n" for turn in case.get("history", [])
+    )
     return (
         f"[문서]\n{document}\n\n"
-        f"[페르소나] {case['persona']}\n"
+        + (f"[이전 대화]\n{history}\n" if history else "")
+        + f"[페르소나] {case['persona']}\n"
         f"[페르소나 기준] {case.get('persona_check', '없음')}\n"
         f"[문항 유형] {KIND_CRITERIA.get(case['kind'], DEFAULT_CRITERIA)}\n"
         f"[질문] {case['question']}\n"
