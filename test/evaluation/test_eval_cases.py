@@ -28,6 +28,10 @@ def test_cases_are_well_formed():
             assert case.get("persona_check"), case["id"]
         if case["kind"] == "follow_up":
             assert case.get("history"), case["id"]
+        # 문서를 읽지 못한 상황은 튜터에게 문서를 주지 않는다
+        assert (case["kind"] == "unreadable_doc") == bool(case.get("document_unreadable")), case["id"]
+        if case.get("document_unreadable"):
+            assert case["documents"] == [], case["id"]
         # 이전 대화는 학생부터 번갈아 나오고, 마지막은 튜터 답이다(지금 질문이 다음 학생 차례)
         history = case.get("history", [])
         assert [turn["role"] for turn in history] == ["user", "assistant"] * (len(history) // 2), case["id"]

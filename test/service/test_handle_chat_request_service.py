@@ -119,6 +119,7 @@ def test_follow_up_without_file_uses_room_document(db, monkeypatch, upload_dir):
     assert result["document_notice"] is None
     contents = [str(m["content"]) for m in sent[-1]]
     assert any("수행평가 제출 기한은 11월 28일입니다." in content for content in contents)
+    assert not any(content.startswith("[업로드된 PDF 문서를 읽지 못함]") for content in contents)
 
 
 def test_follow_up_without_file_uses_latest_room_document(db, monkeypatch, upload_dir):
@@ -179,10 +180,12 @@ def test_follow_up_without_file_skips_unreadable_room_document(db, monkeypatch, 
     result = handle_chat_request_service(db, room.id, "다음 질문이야.")
 
     assert result["assistant_message"] == "답변입니다."
-    assert [m["role"] for m in sent[-1]].count("system") == 1
+    assert not any(str(m["content"]).startswith("[업로드된 PDF 문서 내용") for m in sent[-1])
     assert len(list_messages_by_room(db, room.id, offset=0, limit=100)) == 4
     # 문서 없이 답했다는 것을 사용자에게 알린다
     assert "fake.pdf" in result["document_notice"]
+    # 모델에게도 문서를 읽지 못했다고 알린다
+    assert any(str(m["content"]).startswith("[업로드된 PDF 문서를 읽지 못함]") for m in sent[-1])
 
 
 def test_follow_up_without_file_ignores_document_outside_room(db, monkeypatch, upload_dir):
@@ -215,8 +218,9 @@ def test_follow_up_without_file_ignores_document_outside_room(db, monkeypatch, u
     result = handle_chat_request_service(db, room.id, "요약해줘.")
 
     assert read_paths == []
-    assert [m["role"] for m in sent[-1]].count("system") == 1
+    assert not any(str(m["content"]).startswith("[업로드된 PDF 문서 내용") for m in sent[-1])
     assert "other.pdf" in result["document_notice"]
+    assert any(str(m["content"]).startswith("[업로드된 PDF 문서를 읽지 못함]") for m in sent[-1])
 
 
 def test_chat_without_any_room_document_has_no_notice(db, monkeypatch, upload_dir):

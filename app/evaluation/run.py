@@ -28,6 +28,7 @@ from openai import OpenAIError
 from app.backend.model.messages import Messages, Role
 from app.backend.service import document_context_service
 from app.backend.service.ai_chat_service import (
+    DOCUMENT_UNREADABLE_PROMPT,
     FILE_CONTEXT_HEADER,
     MAX_FILE_CONTEXT_LENGTH,
     PARTIAL_FILE_CONTEXT_HEADER,
@@ -47,6 +48,7 @@ KINDS = {
     "persona": "페르소나",
     "long_doc": "긴 문서",
     "follow_up": "이어지는 질문",
+    "unreadable_doc": "문서 읽기 실패",
 }
 
 
@@ -109,7 +111,13 @@ def run_one(case: dict) -> Result:
     start = time.monotonic()
     result = Result(id=case["id"], kind=case["kind"], persona=case["persona"], status="fail")
     document = load_document(case)
-    messages = build_openai_messages(load_history(case), case["question"], document, case["persona"])
+    messages = build_openai_messages(
+        load_history(case),
+        case["question"],
+        document,
+        case["persona"],
+        document_unreadable=case.get("document_unreadable", False),
+    )
     try:
         result.answer = request_chat_completion(messages)
     except OpenAIError as exc:
@@ -165,12 +173,13 @@ def format_summary(summary: dict[str, dict[str, int]]) -> str:
 
 
 def prompt_version() -> str:
-    # 페르소나 프롬프트, 문서 머리말, 긴 문서에서 고르는 방식이 바뀌면 버전이 바뀐다
+    # 페르소나 프롬프트, 문서 머리말, 문서를 못 읽었을 때의 안내, 긴 문서에서 고르는 방식이 바뀌면 버전이 바뀐다
     text = (
         json.dumps(PERSONA_PROMPT_MAP, ensure_ascii=False, sort_keys=True)
         + str(MAX_FILE_CONTEXT_LENGTH)
         + FILE_CONTEXT_HEADER
         + PARTIAL_FILE_CONTEXT_HEADER
+        + DOCUMENT_UNREADABLE_PROMPT
         + inspect.getsource(document_context_service)
     )
     return hashlib.sha256(text.encode()).hexdigest()[:12]

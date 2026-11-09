@@ -84,6 +84,13 @@ PARTIAL_FILE_CONTEXT_HEADER = (
     "[업로드된 PDF 문서 내용 — 문서가 길어 질문과 관련된 부분만 담았고, 빠진 부분은 '…(중략)…'으로 표시했다]"
 )
 MAX_HISTORY_COUNT = 20
+# 대화방 문서를 읽지 못했을 때 모델에게 알린다. 없으면 '문서에 없다'고 단정하거나 내용을 짐작해 답한다
+DOCUMENT_UNREADABLE_PROMPT = (
+    "[업로드된 PDF 문서를 읽지 못함] 이 대화방에 올린 문서를 지금 읽을 수 없어 문서 내용을 보내지 못했다. "
+    "그래서 이번 답변에는 '문서에는 해당 내용이 없다'는 규칙을 쓰지 않는다. 문서에 없는지 알 수 없기 때문이다. "
+    "문서 내용을 묻는 질문이면 '올린 문서를 지금 읽지 못해 확인할 수 없다'고 먼저 밝히고 문서를 다시 올려 달라고 안내하라. "
+    "문서 내용을 짐작해서 지어내지 마라. 이전 대화에서 이미 답한 문서 내용은 다시 말해도 된다."
+)
 ROOM_DOCUMENT_UNREADABLE_NOTICE = "이 대화방에 올린 문서({file_name})를 읽지 못해 문서 없이 답했습니다. 문서를 다시 올려 주세요."
 
 
@@ -160,12 +167,15 @@ def build_openai_messages(
     user_message: str,
     file_text: str = "",
     persona: str | None = None,
+    document_unreadable: bool = False,
 ) -> list[ChatCompletionMessageParam]: # OpenAI에서 채팅타입을 명시 해줌
     """
     OpenAI 요청용 메시지 배열 생성
     :param history: 기존 대화 이력
     :param user_message: 현재 사용자 메시지
     :param file_text: 업로드 파일 텍스트
+    :param persona: 채팅방 페르소나
+    :param document_unreadable: 대화방 문서를 읽지 못했는지 여부
     :return: OpenAI 요청 메시지 목록
     """
     messages: list[ChatCompletionMessageParam] = []
@@ -189,6 +199,12 @@ def build_openai_messages(
             "content": f"{header}\n{document}",
         }
         messages.append(file_message)
+    elif document_unreadable:
+        unreadable_message: ChatCompletionSystemMessageParam = {
+            "role": "system",
+            "content": DOCUMENT_UNREADABLE_PROMPT,
+        }
+        messages.append(unreadable_message)
 
     for history_message in history[-MAX_HISTORY_COUNT:]:
         if _to_openai_role(history_message.role) == "user":
@@ -253,7 +269,9 @@ def handle_chat_request_service(
 
         history = get_message_history_service(db, room_id, MAX_HISTORY_COUNT, login_id=login_id)
 
-        openai_messages = build_openai_messages(history, user_message.strip(), file_text, room.persona)
+        openai_messages = build_openai_messages(
+            history, user_message.strip(), file_text, room.persona, document_unreadable=document_notice is not None
+        )
 
         post_messages_service(db, room_id, Role.USER, user_message.strip(), commit=False, login_id=login_id)
 
