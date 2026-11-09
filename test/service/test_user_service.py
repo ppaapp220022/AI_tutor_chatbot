@@ -9,6 +9,7 @@ from app.backend.service.user_service import (
     modify_user,
     modify_active_user,
     get_user_all,
+    pwd_encoding,
 )
 
 
@@ -84,26 +85,43 @@ def test_modify_user_not_found(db):
         modify_user(db, request)
 
 
-# 회원 정보 수정 - 동일한 비밀번호
+# 회원 정보 수정 - 비밀번호는 그대로, 이메일만 변경
 def test_modify_user_same_password(db):
     # given
     add_user(db, make_user_request())
     same_password_request = UserRequest(login_id='test', password='password123', email='new@test.com')
 
-    # when & then
-    with pytest.raises(ValueError):
-        modify_user(db, same_password_request)
+    # when
+    updated = modify_user(db, same_password_request)
+
+    # then
+    assert updated.email == 'new@test.com'
+    assert pwd_encoding.verify('password123', find_user_id(db, 'test').password)
 
 
-# 회원 정보 수정 - 동일한 이메일
+# 회원 정보 수정 - 이메일은 그대로, 비밀번호만 변경
 def test_modify_user_same_email(db):
     # given
     add_user(db, make_user_request())
     same_email_request = UserRequest(login_id='test', password='new_password123', email='test@test.com')
 
+    # when
+    updated = modify_user(db, same_email_request)
+
+    # then
+    assert updated.email == 'test@test.com'
+    assert pwd_encoding.verify('new_password123', find_user_id(db, 'test').password)
+
+
+# 회원 정보 수정 - 비밀번호와 이메일 모두 그대로
+def test_modify_user_nothing_changed(db):
+    # given
+    add_user(db, make_user_request())
+    same_request = UserRequest(login_id='test', password='password123', email='test@test.com')
+
     # when & then
     with pytest.raises(ValueError):
-        modify_user(db, same_email_request)
+        modify_user(db, same_request)
 
 
 # 활성화 상태 변경 - 단건
