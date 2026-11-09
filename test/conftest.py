@@ -5,7 +5,7 @@ import shutil
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.backend.database import Base
-from app.backend.service.uploaded_files_service import UPLOAD_DIR
+from app.backend.service import uploaded_files_service
 
 # 테스트용 DB. 로컬 포트가 다르면 TEST_DATABASE_URL로 바꾼다
 TEST_DATABASE_URL = os.getenv(
@@ -26,22 +26,14 @@ def db():
         Base.metadata.drop_all(bind=engine, checkfirst=True) # 테스트 끝나면 테이블 삭제
 
 
-@pytest.fixture
-def upload_dir():
-    upload_path = UPLOAD_DIR
-    upload_path.mkdir(parents=True, exist_ok=True)
-
-    for child in upload_path.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
+@pytest.fixture(autouse=True)
+def upload_dir(tmp_path, monkeypatch):
+    # 테스트에서 올린 파일은 실제 uploads 폴더가 아니라 테스트용 임시 폴더에 저장하고, 끝나면 비운다
+    upload_path = tmp_path / "uploads"
+    upload_path.mkdir()
+    monkeypatch.setattr(uploaded_files_service, "UPLOAD_DIR", upload_path)
 
     try:
         yield upload_path
     finally:
-        for child in upload_path.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
+        shutil.rmtree(upload_path, ignore_errors=True)
