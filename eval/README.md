@@ -35,14 +35,17 @@ uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 바꾸
 judge 모델(기본 `gpt-4o`, `EVAL_JUDGE_MODEL`)이 문항마다 세 항목을 true/false로 판정하고 근거를 남긴다.
 
 - `correct`: 유형별 기준(위 표)
-- `unsupported_claim`: 문서에 없는 내용을 문서에 있는 것처럼 말하거나 문서와 어긋나는 말을 함. 문서 밖 지식이라고 밝힌 보충 설명은 괜찮다
+- `unsupported_claim`: 다음 중 하나라도 해당함
+  - 문서와 어긋나는 말을 함
+  - 문서에 없는 사실(문서 용어에 덧붙인 설명 포함)을 문서 밖 지식이라고 밝히지 않고 말함
+  - 문서 밖 지식이라고 밝혔지만 사실과 다름. judge가 대조할 수 있도록 `expected`에 "(참고 사실: ...)"을 적어 둔다
 - `persona_violation`: `persona_check`를 지키지 않음
 
 셋 다 통과해야 pass다. judge 응답을 해석하지 못하면 `judge_error`로 세고 통과로 치지 않는다.
 
 ## 규칙
 
-- 답변 모델·judge 모델·프롬프트 버전이 다른 점수끼리 섞지 않는다. 결과 파일에 셋이 함께 남는다.
+- 답변 모델·judge 모델·judge 버전·프롬프트 버전이 다른 점수끼리 섞지 않는다. 결과 파일에 넷이 함께 남는다.
 - 평가 문항과 학습지를 프롬프트 예시로 쓰지 않는다.
 - judge는 답변 모델보다 강한 모델을 쓴다. 같은 모델이 자기 답을 채점하면 점수가 후해진다.
 - 문항을 고치면 `cases_version`이 바뀐다. 이전 결과와 비교할 때 확인한다.

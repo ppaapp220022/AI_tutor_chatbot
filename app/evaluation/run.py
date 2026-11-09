@@ -7,7 +7,7 @@
 
 문항마다 서비스와 같은 build_openai_messages()와 request_chat_completion()으로 답을 만들고(DB는 쓰지 않는다),
 judge가 정답 여부·근거 없는 주장·페르소나 위반을 판정한다. 셋 다 통과해야 pass다. judge 응답 오류는 통과로 치지 않는다.
-결과는 eval/results/에 JSON으로 남긴다(git 제외). 답변 모델·judge 모델·프롬프트 버전이 다른 점수끼리 섞지 않는다.
+결과는 eval/results/에 JSON으로 남긴다(git 제외). 답변 모델·judge 모델·judge 버전·프롬프트 버전이 다른 점수끼리 섞지 않는다.
 """
 
 import argparse
@@ -30,7 +30,7 @@ from app.backend.service.ai_chat_service import (
     build_openai_messages,
 )
 from app.backend.service.ai_client_service import chat_model, request_chat_completion
-from app.evaluation.judge import judge, judge_model
+from app.evaluation.judge import DEFAULT_CRITERIA, JUDGE_SYSTEM_PROMPT, KIND_CRITERIA, judge, judge_model
 
 EVAL_DIR = Path(__file__).resolve().parents[2] / "eval"
 CASES = EVAL_DIR / "cases.jsonl"
@@ -149,6 +149,12 @@ def prompt_version() -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
+def judge_version() -> str:
+    # 채점 기준이 바뀌면 버전이 바뀐다. 버전이 다른 점수끼리 비교하지 않는다
+    text = JUDGE_SYSTEM_PROMPT + json.dumps(KIND_CRITERIA, ensure_ascii=False, sort_keys=True) + DEFAULT_CRITERIA
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
 def cases_version() -> str:
     text = CASES.read_text() + "".join(p.read_text() for p in sorted(DOCUMENTS.glob("*.md")))
     return hashlib.sha256(text.encode()).hexdigest()[:12]
@@ -168,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["EVAL_JUDGE_MODEL"] = args.judge_model
     cases = load_cases(args.ids)
     print(
-        f"답변 모델 {chat_model()}, judge {judge_model()}, 프롬프트 {prompt_version()}, "
+        f"답변 모델 {chat_model()}, judge {judge_model()} {judge_version()}, 프롬프트 {prompt_version()}, "
         f"문항 {cases_version()}, {len(cases)}개",
         file=sys.stderr,
     )
@@ -185,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     record = {
         "model": chat_model(),
         "judge_model": judge_model(),
+        "judge_version": judge_version(),
         "prompt_version": prompt_version(),
         "cases_version": cases_version(),
         "finished_at": datetime.now().isoformat(timespec="seconds"),
