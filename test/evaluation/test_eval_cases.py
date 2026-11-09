@@ -38,13 +38,13 @@ def test_only_long_doc_cases_exceed_context_limit():
             assert length <= MAX_FILE_CONTEXT_LENGTH, case["id"]
 
 
-def test_long_doc_answer_is_cut_from_tutor_context():
-    # 긴 문서 문항의 답(anchor)은 문서에는 있지만 튜터에게 가는 메시지에서는 잘려 나간다
+def test_long_doc_answer_reaches_tutor_context():
+    # 긴 문서 문항의 답(anchor)은 12,000자 뒤에 있지만, 질문과 관련된 부분을 골라 넣으므로 튜터에게 간다
     for case in (c for c in CASES if c["kind"] == "long_doc"):
         document = load_document(case)
-        assert case["anchor"] in document
+        assert document.index(case["anchor"]) > MAX_FILE_CONTEXT_LENGTH, case["id"]
         sent = "\n".join(str(m["content"]) for m in build_openai_messages([], case["question"], document))
-        assert case["anchor"] not in sent, case["id"]
+        assert case["anchor"] in sent, case["id"]
 
 
 def test_parse_verdict():

@@ -12,6 +12,7 @@ judge가 정답 여부·근거 없는 주장·페르소나 위반을 판정한�
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import sys
@@ -24,8 +25,11 @@ from pathlib import Path
 
 from openai import OpenAIError
 
+from app.backend.service import document_context_service
 from app.backend.service.ai_chat_service import (
+    FILE_CONTEXT_HEADER,
     MAX_FILE_CONTEXT_LENGTH,
+    PARTIAL_FILE_CONTEXT_HEADER,
     PERSONA_PROMPT_MAP,
     build_openai_messages,
 )
@@ -144,8 +148,14 @@ def format_summary(summary: dict[str, dict[str, int]]) -> str:
 
 
 def prompt_version() -> str:
-    # 페르소나 프롬프트나 문서 자르는 길이가 바뀌면 버전이 바뀐다
-    text = json.dumps(PERSONA_PROMPT_MAP, ensure_ascii=False, sort_keys=True) + str(MAX_FILE_CONTEXT_LENGTH)
+    # 페르소나 프롬프트, 문서 머리말, 긴 문서에서 고르는 방식이 바뀌면 버전이 바뀐다
+    text = (
+        json.dumps(PERSONA_PROMPT_MAP, ensure_ascii=False, sort_keys=True)
+        + str(MAX_FILE_CONTEXT_LENGTH)
+        + FILE_CONTEXT_HEADER
+        + PARTIAL_FILE_CONTEXT_HEADER
+        + inspect.getsource(document_context_service)
+    )
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
