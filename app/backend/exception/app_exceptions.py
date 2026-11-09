@@ -21,3 +21,6 @@ class DatabaseException(AppException):
 class ExternalServiceException(AppException):
     def __init__(self, detail: str = "외부 서비스 처리 중 오류가 발생했습니다."):
         super().__init__(detail, status.HTTP_502_BAD_GATEWAY)
+class TooManyRequestsException(AppException):
+    def __init__(self, detail: str):
+        super().__init__(detail, status.HTTP_429_TOO_MANY_REQUESTS)
