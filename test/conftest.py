@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import shutil
 from sqlalchemy import create_engine
@@ -5,8 +7,10 @@ from sqlalchemy.orm import sessionmaker
 from app.backend.database import Base
 from app.backend.service.uploaded_files_service import UPLOAD_DIR
 
-# 테스트용 DB
-TEST_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ai_tutor_chatbot_test"
+# 테스트용 DB. 로컬 포트가 다르면 TEST_DATABASE_URL로 바꾼다
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/ai_tutor_chatbot_test"
+)
 engine = create_engine(TEST_DATABASE_URL)
 
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

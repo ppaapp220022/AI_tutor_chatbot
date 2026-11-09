@@ -1,3 +1,4 @@
+import pytest
 from loguru import logger
 
 from app.backend.model.users import Users, Role
@@ -75,11 +76,9 @@ def test_update_user_not_found(db):
     # given
     update_data = Users(login_id='없는유저', password='1234', email='test@test.com')
 
-    # when
-    result = update_user(db, update_data)
-
-    # then
-    assert result is None
+    # when & then
+    with pytest.raises(ValueError):
+        update_user(db, update_data)
 
 
 # 활성화 상태 변경 - 단건
