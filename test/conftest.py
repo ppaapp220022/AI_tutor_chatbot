@@ -1,11 +1,11 @@
 import os
 
 import pytest
-from pathlib import Path
 import shutil
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.backend.database import Base
+from app.backend.service.uploaded_files_service import UPLOAD_DIR
 
 # 테스트용 DB. 로컬 포트가 다르면 TEST_DATABASE_URL로 바꾼다
 TEST_DATABASE_URL = os.getenv(
@@ -28,7 +28,7 @@ def db():
 
 @pytest.fixture
 def upload_dir():
-    upload_path = Path("uploads")
+    upload_path = UPLOAD_DIR
     upload_path.mkdir(parents=True, exist_ok=True)
 
     for child in upload_path.iterdir():
