@@ -116,6 +116,8 @@ def handle_send_message(room_id: int, prompt: str, uploaded_file: Any | None) ->
         "role": "assistant",
         "content": result.get("assistant_message", ""),
     }
+    if result.get("document_notice"):
+        assistant_message["notice"] = result["document_notice"]
 
     st.session_state["messages"].append(user_message)
     st.session_state["messages"].append(assistant_message)

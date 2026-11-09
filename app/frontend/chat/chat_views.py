@@ -241,6 +241,8 @@ def _render_messages() -> None:
     for message in st.session_state["messages"]:
         with st.chat_message(message["role"]):
             st.write(message["content"])
+            if message.get("notice"):
+                st.warning(message["notice"])
             if message.get("file"):
                 st.markdown(
                     f"""
