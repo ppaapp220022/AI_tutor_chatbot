@@ -30,7 +30,12 @@ uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 바꾸
 
 문항은 질문 한 번에 문서를 붙여 보내는 경우만 잰다. 어떤 문서를 메시지에 넣는지(예: 파일 없이 이어서 한 질문에 채팅방 문서를 넣는 것)는 DB를 거치는 서비스 로직이므로 `test/service/test_handle_chat_request_service.py`에서 검사한다.
 
-`long_doc` 문항의 `anchor`는 답의 위치를 표시한다(12,000자 뒤). 서비스는 12,000자가 넘는 문서를 앞에서 자르지 않고, 질문(과 직전 질문)과 겹치는 부분을 골라 12,000자 안에 담는다(`app/backend/service/document_context_service.py`). 이 문서는 12,000자를 조금 넘을 뿐이라 고르는 방식을 세게 시험하지는 못한다. 훨씬 긴 문서는 `test/service/test_document_context_service.py`에서 검사한다.
+`long_doc` 문항의 `anchor`는 답의 위치를 표시한다(12,000자 뒤). 서비스는 12,000자가 넘는 문서를 앞에서 자르지 않고, 질문(과 직전 질문)과 겹치는 부분을 골라 12,000자 안에 담는다(`app/backend/service/document_context_service.py`).
+
+- `long-001`: 학습지 5개(약 12,900자). 12,000자를 조금 넘을 뿐이라 답이 있는 마지막 부분만 넘치는 경우다.
+- `long-002`: 학습지 5개 사이에 가정통신문 모음(`school_life_guide.md`)을 끼운 약 18,700자. 답(교외 체험학습)은 가운데에 있고, 비슷한 낱말(신청, 기한, 제출)을 쓰는 항목이 여럿이며, 질문은 문서 낱말을 그대로 쓰지 않는다('가족 여행 때문에 학교를 빠지려고'). 고르는 방식이 맞는 항목을 찾는지 본다.
+
+이보다 훨씬 긴 문서는 `test/service/test_document_context_service.py`에서 검사한다.
 
 ## 채점
 
