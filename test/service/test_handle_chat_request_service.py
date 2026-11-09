@@ -5,7 +5,7 @@ import pytest
 from app.backend.exception.app_exceptions import ExternalServiceException
 from app.backend.model.users import Users, Role
 from app.backend.repository.messages_repository import list_messages_by_room
-from app.backend.repository.uploaded_files_repository import list_uploaded_files
+from app.backend.repository.uploaded_files_repository import create_uploaded_files, list_uploaded_files
 from app.backend.repository.user_repository import create_users
 from app.backend.service.ai_chat_service import handle_chat_request_service
 from app.backend.service.chat_room_service import post_chat_room_service
@@ -180,3 +180,36 @@ def test_follow_up_without_file_skips_unreadable_room_document(db, monkeypatch, 
     assert result["assistant_message"] == "답변입니다."
     assert [m["role"] for m in sent[-1]].count("system") == 1
     assert len(list_messages_by_room(db, room.id, offset=0, limit=100)) == 4
+
+
+def test_follow_up_without_file_ignores_document_outside_room(db, monkeypatch, upload_dir):
+    user = create_users(db, make_user("user1", "1234", "user1@example.com"))
+    room = post_chat_room_service(db, user.id, "test", "test persona")
+    other_room = post_chat_room_service(db, user.id, "other", "test persona")
+    # 다른 대화방 폴더를 가리키는 행. 이 대화방의 질문에서 읽으면 안 된다
+    create_uploaded_files(db, room.id, "other.pdf", f"uploads/{other_room.id}/other.pdf")
+    db.commit()
+    read_paths: list[str] = []
+    sent: list[list[dict]] = []
+
+    def fake_extract_text_from_file(file_path: str) -> str:
+        read_paths.append(file_path)
+        return "다른 대화방 문서"
+
+    def fake_request_chat_completion(messages: list[dict]) -> str:
+        sent.append(messages)
+        return "답변입니다."
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.extract_text_from_file",
+        fake_extract_text_from_file,
+    )
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.request_chat_completion",
+        fake_request_chat_completion,
+    )
+
+    handle_chat_request_service(db, room.id, "요약해줘.")
+
+    assert read_paths == []
+    assert [m["role"] for m in sent[-1]].count("system") == 1

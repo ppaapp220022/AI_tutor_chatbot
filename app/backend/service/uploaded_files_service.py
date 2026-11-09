@@ -16,7 +16,25 @@ from app.backend.repository.uploaded_files_repository import (
 from app.backend.repository.chat_room_repository import find_chat_room
 from app.backend.schema.base_schema import PaginationRequest
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# 실행 위치(cwd)와 상관없이 같은 폴더를 쓰도록 절대 경로로 고정한다. 상대 경로를 주면 프로젝트 루트 기준이다
+UPLOAD_DIR = (PROJECT_ROOT / os.getenv("UPLOAD_DIR", "uploads")).resolve()
+
+
+def resolve_upload_path(room_id: int, file_path: str) -> Path:
+    """
+    DB에 저장된 업로드 경로를 실제 파일 경로로 바꾼다
+    예전 행은 'uploads/13/...'처럼 상대 경로라 프로젝트 루트 기준으로 해석한다
+    :param room_id: 대화방 PK
+    :param file_path: 저장된 파일 경로
+    :return: 해당 대화방 업로드 폴더 안의 절대 경로
+    """
+    room_dir = UPLOAD_DIR / str(room_id)
+    path = (PROJECT_ROOT / file_path).resolve()  # file_path가 절대 경로면 그대로 쓰인다
+    if not path.is_relative_to(room_dir):
+        # 다른 대화방이나 업로드 폴더 밖의 파일을 읽지 못하게 막는다
+        raise ValueError("대화방 업로드 폴더 밖의 파일입니다.")
+    return path
 
 # 파일 업로드 저장소 생성
 def post_uploaded_files_service(
@@ -87,7 +105,8 @@ def save_upload_file_service(db, room_id: int, upload_file, commit: bool = True,
     room_dir = UPLOAD_DIR / str(room_id)
     room_dir.mkdir(parents=True, exist_ok=True)
 
-    stored_name = f"{uuid4()}_{original_name}"
+    # 파일명에 섞인 폴더 경로('../' 등)는 버린다
+    stored_name = f"{uuid4()}_{Path(original_name).name}"
     stored_path = room_dir / stored_name
 
     try:
@@ -163,17 +182,23 @@ def get_one_uploaded_files_service(db, uploaded_id: int):
     return uploaded
 
 # 파일 업로드 수정
-def patch_uploaded_files_service(db, uploaded_id: int, new_file_name: str, new_file_path: str):
+def patch_uploaded_files_service(db, room_id: int, uploaded_id: int, new_file_name: str, new_file_path: str):
     """
     업로드 파일 수정 서비스
     :param db: 세션
+    :param room_id: 대화방 PK
     :param uploaded_id: 업로드 파일 PK
     :param new_file_name: 수정할 파일명
     :param new_file_path: 수정할 파일 경로
     :return: 수정된 업로드 파일 정보
     """
     try:
-        uploaded = update_uploaded_files(db, uploaded_id, new_file_name, new_file_path)
+        resolved_path = resolve_upload_path(room_id, new_file_path)
+    except ValueError as exc:
+        raise BadRequestException(str(exc)) from exc
+
+    try:
+        uploaded = update_uploaded_files(db, uploaded_id, new_file_name, str(resolved_path))
 
         if not uploaded:
             raise NotFoundException("수정할 업로드 파일이 존재하지 않습니다.")
