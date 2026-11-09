@@ -21,6 +21,7 @@ from app.backend.model.messages import Messages
 from app.backend.model.messages import Role
 from app.backend.repository.chat_room_repository import find_chat_room
 from app.backend.service.ai_client_service import request_chat_completion
+from app.backend.service.document_context_service import select_document_context
 from app.backend.service.file_parser_service import extract_text_from_file
 from app.backend.service.messages_service import (
     get_message_history_service,
@@ -73,6 +74,11 @@ PERSONA_PROMPT_MAP: dict[str, str] = {
 }
 
 MAX_FILE_CONTEXT_LENGTH = 12000
+FILE_CONTEXT_HEADER = "[업로드된 PDF 문서 내용]"
+# 문서가 길어 일부만 넣었을 때 모델이 '문서에 없다'고 단정하지 않게 알린다
+PARTIAL_FILE_CONTEXT_HEADER = (
+    "[업로드된 PDF 문서 내용 — 문서가 길어 질문과 관련된 부분만 담았고, 빠진 부분은 '…(중략)…'으로 표시했다]"
+)
 MAX_HISTORY_COUNT = 20
 
 
@@ -168,9 +174,14 @@ def build_openai_messages(
     messages.append(system_message)
 
     if file_text:
+        # 이어지는 질문('그건 언제까지야?')도 찾을 수 있게 직전 사용자 질문을 함께 쓴다
+        previous_questions = [m.content for m in history if _to_openai_role(m.role) == "user"][-1:]
+        query = "\n".join([*previous_questions, user_message])
+        document = select_document_context(file_text, query, MAX_FILE_CONTEXT_LENGTH)
+        header = FILE_CONTEXT_HEADER if document == file_text else PARTIAL_FILE_CONTEXT_HEADER
         file_message: ChatCompletionSystemMessageParam = {
             "role": "system",
-            "content": f"[업로드된 PDF 문서 내용]\n{file_text[:MAX_FILE_CONTEXT_LENGTH]}",
+            "content": f"{header}\n{document}",
         }
         messages.append(file_message)
 
