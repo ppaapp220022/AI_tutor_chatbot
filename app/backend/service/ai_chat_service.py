@@ -84,6 +84,7 @@ PARTIAL_FILE_CONTEXT_HEADER = (
     "[업로드된 PDF 문서 내용 — 문서가 길어 질문과 관련된 부분만 담았고, 빠진 부분은 '…(중략)…'으로 표시했다]"
 )
 MAX_HISTORY_COUNT = 20
+ROOM_DOCUMENT_UNREADABLE_NOTICE = "이 대화방에 올린 문서({file_name})를 읽지 못해 문서 없이 답했습니다. 문서를 다시 올려 주세요."
 
 
 def get_available_personas() -> list[str]:
@@ -110,24 +111,24 @@ def _cleanup_uploaded_file(uploaded) -> None:
     if parent_dir.exists() and not any(parent_dir.iterdir()):
         parent_dir.rmdir()
 
-def _load_room_file_text(db, room_id: int, login_id: str | None) -> str:
+def _load_room_file_text(db, room_id: int, login_id: str | None) -> tuple[str, str | None]:
     """
     파일 없이 온 질문에 쓸 대화방 문서 텍스트. 가장 최근 업로드 파일만 쓴다
     (파일을 올린 요청도 그 파일 하나만 쓰므로 이어지는 질문도 같은 문서를 보게 한다)
     :param db: 세션
     :param room_id: 대화방 PK
     :param login_id: 로그인 아이디
-    :return: 문서 텍스트. 파일이 없거나 읽지 못하면 빈 문자열
+    :return: (문서 텍스트, 사용자 안내). 파일이 없으면 ("", None), 읽지 못하면 ("", 안내 문구)
     """
     latest = get_latest_uploaded_file_service(db, room_id, login_id=login_id)
     if not latest or not latest.file_path:
-        return ""
+        return "", None
     try:
-        return extract_text_from_file(str(resolve_upload_path(room_id, latest.file_path)))
+        return extract_text_from_file(str(resolve_upload_path(room_id, latest.file_path))), None
     except ValueError as exc:
-        # 이번 요청에 올린 파일이 아니므로 질문 자체는 막지 않고 문서 없이 답한다
+        # 이번 요청에 올린 파일이 아니므로 질문 자체는 막지 않고 문서 없이 답하되, 사용자에게 알린다
         logger.warning(f"대화방 문서를 읽지 못함 - room_id: {room_id}, uploaded_id: {latest.id}, {exc}")
-        return ""
+        return "", ROOM_DOCUMENT_UNREADABLE_NOTICE.format(file_name=latest.file_name)
 
 def _to_openai_role(role: Role) -> Literal["user", "assistant"]: # 반환값은 user, assistent 만 가질 수 있도록 명시
     """
@@ -238,6 +239,7 @@ def handle_chat_request_service(
 
     uploaded = None
     file_text = ""
+    document_notice = None
 
     try:
         if upload_file is not None:
@@ -247,7 +249,7 @@ def handle_chat_request_service(
             except ValueError as exc:
                 raise BadRequestException(str(exc)) from exc
         else:
-            file_text = _load_room_file_text(db, room_id, login_id)
+            file_text, document_notice = _load_room_file_text(db, room_id, login_id)
 
         history = get_message_history_service(db, room_id, MAX_HISTORY_COUNT, login_id=login_id)
 
@@ -289,4 +291,5 @@ def handle_chat_request_service(
         "assistant_message": assistant_message,
         "uploaded_file_id": uploaded.id if uploaded else None,
         "file_name": uploaded.file_name if uploaded else None,
+        "document_notice": document_notice,
     }
