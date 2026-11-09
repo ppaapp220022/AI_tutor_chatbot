@@ -1,5 +1,5 @@
 # Claude가 PR을 .github/review/prompt.md(기준 브랜치 버전) 기준으로 검토하는 관문. 브랜치 보호에서 필수 체크로 지정할 수 있다(`ai-review`).
-# blocking 문제가 1개 이상이거나 판정 파일이 없으면 실패한다(실패 시 닫힘).
+# blocking이나 수정 요청(notes)이 1개 이상이거나 판정 파일이 없으면 실패한다(실패 시 닫힘). 리뷰 코멘트는 모두 고친 뒤 머지한다.
 # 판정을 PR 코멘트 하나로 남기고, 다시 push하면 그 코멘트를 갱신한다.
 name: ai-review
 
@@ -62,13 +62,14 @@ jobs:
           fi
 
           blocking=$(jq '.blocking | length' review-verdict.json)
+          notes=$(jq '.notes | length' review-verdict.json)
           {
-            echo "## AI 리뷰: $([[ $blocking -gt 0 ]] && echo "막음 (blocking $blocking건)" || echo "통과")"
+            echo "## AI 리뷰: $([[ $((blocking + notes)) -gt 0 ]] && echo "막음 (blocking $blocking건, 수정 요청 $notes건)" || echo "통과")"
             echo
             jq -r '.summary' review-verdict.json
             echo
             jq -r '.blocking[] | "- **[막음] \(.file):\(.line // "-")** \(.rule) — \(.why)"' review-verdict.json
-            jq -r '.notes[] | "- [참고] \(.file):\(.line // "-") — \(.why)"' review-verdict.json
+            jq -r '.notes[] | "- [수정 요청] \(.file):\(.line // "-") — \(.why)"' review-verdict.json
             echo
             echo "<sub>${{ github.sha }} 기준 · 지침: .github/review/prompt.md</sub>"
           } > comment.md
@@ -76,7 +77,8 @@ jobs:
           gh pr comment "$PR" --body-file comment.md --edit-last --create-if-none
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ $blocking -gt 0 ]]; then
-            echo "::error::blocking 문제 $blocking건"
+          # 리뷰 코멘트는 모두 고친 뒤 머지한다. 수정 요청(notes)도 남아 있으면 실패한다
+          if [[ $((blocking + notes)) -gt 0 ]]; then
+            echo "::error::blocking $blocking건, 수정 요청 $notes건"
             exit 1
           fi
