@@ -2,7 +2,7 @@
 
     uv run python -m app.evaluation.run                        # 전체
     uv run python -m app.evaluation.run sci-in-001 long-001    # 일부만
-    uv run python -m app.evaluation.run --model gpt-4o         # 답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4o-mini)
+    uv run python -m app.evaluation.run --model gpt-4o         # 답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4.1-mini)
     uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 (기본: EVAL_JUDGE_MODEL, 없으면 gpt-4o)
 
 문항마다 서비스와 같은 build_openai_messages()와 request_chat_completion()으로 답을 만들고(DB는 쓰지 않는다),
@@ -200,7 +200,7 @@ def cases_version() -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.evaluation.run", description="AI 튜터 평가 문항 채점")
     parser.add_argument("ids", nargs="*", help="돌릴 문항 id. 없으면 전체")
-    parser.add_argument("--model", help="답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4o-mini)")
+    parser.add_argument("--model", help="답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4.1-mini)")
     parser.add_argument("--judge-model", help="judge 모델 (기본: EVAL_JUDGE_MODEL, 없으면 gpt-4o)")
     parser.add_argument("--jobs", type=int, default=4, help="동시에 돌릴 문항 수")
     args = parser.parse_args(argv)

@@ -3,7 +3,7 @@ import os
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-DEFAULT_CHAT_MODEL = "gpt-4o-mini"
+DEFAULT_CHAT_MODEL = "gpt-4.1-mini"
 
 
 def chat_model() -> str:

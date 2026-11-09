@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from openai import OpenAI
 
-# 답변 모델(gpt-4o-mini)보다 강한 모델로 채점한다. 같은 모델이 자기 답을 채점하면 후해진다
+# 답변 모델(gpt-4.1-mini)보다 강한 모델로 채점한다. 같은 모델이 자기 답을 채점하면 후해진다
 DEFAULT_JUDGE_MODEL = "gpt-4o"
 JUDGE_ATTEMPTS = 2
 
