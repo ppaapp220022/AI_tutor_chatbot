@@ -60,7 +60,8 @@ PERSONA_PROMPT_MAP: dict[str, str] = {
         f"{BASE_SYSTEM_PROMPT} "
         "영어 문법, 어휘, 독해, 작문을 중심으로 설명하고 필요한 경우 예문과 자연스러운 표현을 함께 제시하세요. "
         "틀린 표현은 부드럽게 교정하고, 한국어 설명과 영어 예문을 균형 있게 사용하세요. "
-        "교정할 때는 고친 문장과 함께 같은 문법을 쓴 영어 예문을 하나 이상 제시하세요."
+        "교정할 때는 고친 문장, 같은 문법을 쓴 새 영어 예문 하나 이상(고친 문장을 다시 쓴 것은 예문이 아니다), "
+        "한국어 설명을 빠짐없이 모두 넣으세요."
     ),
     "과학 전문가": (
         f"{BASE_SYSTEM_PROMPT} "
@@ -88,7 +89,9 @@ MAX_HISTORY_COUNT = 20
 DOCUMENT_UNREADABLE_PROMPT = (
     "[업로드된 PDF 문서를 읽지 못함] 이 대화방에 올린 문서를 지금 읽을 수 없어 문서 내용을 보내지 못했다. "
     "그래서 이번 답변에는 '문서에는 해당 내용이 없다'는 규칙을 쓰지 않는다. 문서에 없는지 알 수 없기 때문이다. "
-    "문서 내용을 묻는 질문이면 '올린 문서를 지금 읽지 못해 확인할 수 없다'고 먼저 밝히고 문서를 다시 올려 달라고 안내하라. "
+    "이 대화방에서 나오는 학습·과제·평가에 관한 질문은 올린 문서에 관한 질문으로 본다. "
+    "그런 질문이면 '올린 문서를 지금 읽지 못해 확인할 수 없다'고 먼저 밝히고 문서를 다시 올려 달라고 안내하라. "
+    "일반적인 예시나 목록으로 답을 대신하지 마라. "
     "문서 내용을 짐작해서 지어내지 마라. 이전 대화에서 이미 답한 문서 내용은 다시 말해도 된다."
 )
 ROOM_DOCUMENT_UNREADABLE_NOTICE = "이 대화방에 올린 문서({file_name})를 읽지 못해 문서 없이 답했습니다. 문서를 다시 올려 주세요."
@@ -199,12 +202,6 @@ def build_openai_messages(
             "content": f"{header}\n{document}",
         }
         messages.append(file_message)
-    elif document_unreadable:
-        unreadable_message: ChatCompletionSystemMessageParam = {
-            "role": "system",
-            "content": DOCUMENT_UNREADABLE_PROMPT,
-        }
-        messages.append(unreadable_message)
 
     for history_message in history[-MAX_HISTORY_COUNT:]:
         if _to_openai_role(history_message.role) == "user":
@@ -219,6 +216,14 @@ def build_openai_messages(
                 "content": history_message.content,
             }
             messages.append(assistant_chat_message)
+
+    if document_unreadable and not file_text:
+        # 이전 대화에서 문서로 답한 흐름을 이어 가지 않도록, 지금 질문 바로 앞에 둔다
+        unreadable_message: ChatCompletionSystemMessageParam = {
+            "role": "system",
+            "content": DOCUMENT_UNREADABLE_PROMPT,
+        }
+        messages.append(unreadable_message)
 
     user_message_param: ChatCompletionUserMessageParam = {
         "role": "user",
