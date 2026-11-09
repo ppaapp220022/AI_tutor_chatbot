@@ -12,3 +12,5 @@ logs
 uploads
 test
 AI_CHAT_SERVICE_GUIDE.md
+eval
+app/evaluation
