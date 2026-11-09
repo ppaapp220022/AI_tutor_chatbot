@@ -8,7 +8,8 @@
 
 ## 평가 (프롬프트·모델·문서 처리를 바꾼 경우)
 
-<!-- uv run python -m app.evaluation.run 전후 결과. 결과 파일 이름도 적는다 -->
+<!-- uv run python -m app.evaluation.run 전후 결과. 결과 파일 이름도 적는다.
+     ai-review는 PR 본문을 읽지 못한다. 전후 숫자와 프롬프트 버전은 커밋 메시지에도 적는다 -->
 
 | 유형 | 전 | 후 | 답변 모델 / judge |
 |---|---|---|---|
