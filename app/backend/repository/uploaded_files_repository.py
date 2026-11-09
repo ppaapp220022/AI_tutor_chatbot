@@ -51,6 +51,20 @@ def count_uploaded_files_by_room(db: Session, room_id: int) -> int:
     """
     return db.query(func.count(UploadedFiles.id)).filter(UploadedFiles.room_id == room_id).scalar() or 0
 
+def find_latest_uploaded_file(db: Session, room_id: int) -> UploadedFiles | None:
+    """
+    대화방에 가장 최근 업로드된 파일 조회
+    :param db: DB 세션
+    :param room_id: 대화방 번호
+    :return: 가장 최근 업로드 파일. 없으면 None
+    """
+    return (
+        db.query(UploadedFiles)
+        .filter(UploadedFiles.room_id == room_id)
+        .order_by(UploadedFiles.id.desc())
+        .first()
+    )
+
 def find_uploaded_files(db: Session, uploaded_id: int) -> UploadedFiles | None:
     """
     업로드 파일 단건 조회

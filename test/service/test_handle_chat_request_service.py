@@ -91,3 +91,92 @@ def test_handle_chat_request_service_rolls_back_when_ai_fails(db, monkeypatch, u
     assert list_messages_by_room(db, room.id, offset=0, limit=100) == []
     assert list_uploaded_files(db, room.id, offset=0, limit=100) == []
     assert list(upload_dir.rglob("*")) == []
+
+
+def test_follow_up_without_file_uses_room_document(db, monkeypatch, upload_dir):
+    user = create_users(db, make_user("user1", "1234", "user1@example.com"))
+    room = post_chat_room_service(db, user.id, "test", "test persona")
+    sent: list[list[dict]] = []
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.extract_text_from_file",
+        lambda file_path: "수행평가 제출 기한은 11월 28일입니다.",
+    )
+
+    def fake_request_chat_completion(messages: list[dict]) -> str:
+        sent.append(messages)
+        return "답변입니다."
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.request_chat_completion",
+        fake_request_chat_completion,
+    )
+
+    handle_chat_request_service(db, room.id, "이 문서를 요약해줘.", DummyUploadFile("fake.pdf", b"pdf"))
+    result = handle_chat_request_service(db, room.id, "제출 기한이 언제야?")
+
+    assert result["uploaded_file_id"] is None
+    contents = [str(m["content"]) for m in sent[-1]]
+    assert any("수행평가 제출 기한은 11월 28일입니다." in content for content in contents)
+
+
+def test_follow_up_without_file_uses_latest_room_document(db, monkeypatch, upload_dir):
+    user = create_users(db, make_user("user1", "1234", "user1@example.com"))
+    room = post_chat_room_service(db, user.id, "test", "test persona")
+    sent: list[list[dict]] = []
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.extract_text_from_file",
+        lambda file_path: f"{file_path.rsplit('_', 1)[-1]} 내용",
+    )
+
+    def fake_request_chat_completion(messages: list[dict]) -> str:
+        sent.append(messages)
+        return "답변입니다."
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.request_chat_completion",
+        fake_request_chat_completion,
+    )
+
+    handle_chat_request_service(db, room.id, "첫 문서야.", DummyUploadFile("old.pdf", b"pdf"))
+    handle_chat_request_service(db, room.id, "새 문서야.", DummyUploadFile("new.pdf", b"pdf"))
+    handle_chat_request_service(db, room.id, "요약해줘.")
+
+    contents = "\n".join(str(m["content"]) for m in sent[-1] if m["role"] == "system")
+    assert "new.pdf 내용" in contents
+    assert "old.pdf 내용" not in contents
+
+
+def test_follow_up_without_file_skips_unreadable_room_document(db, monkeypatch, upload_dir):
+    user = create_users(db, make_user("user1", "1234", "user1@example.com"))
+    room = post_chat_room_service(db, user.id, "test", "test persona")
+    sent: list[list[dict]] = []
+    texts = iter(["첫 업로드 문서 내용"])
+
+    def fake_extract_text_from_file(file_path: str) -> str:
+        # 업로드 때는 읽히고, 이후에는 파일이 사라진 상황
+        try:
+            return next(texts)
+        except StopIteration:
+            raise ValueError("파일이 존재하지 않습니다.")
+
+    def fake_request_chat_completion(messages: list[dict]) -> str:
+        sent.append(messages)
+        return "답변입니다."
+
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.extract_text_from_file",
+        fake_extract_text_from_file,
+    )
+    monkeypatch.setattr(
+        "app.backend.service.ai_chat_service.request_chat_completion",
+        fake_request_chat_completion,
+    )
+
+    handle_chat_request_service(db, room.id, "이 문서를 요약해줘.", DummyUploadFile("fake.pdf", b"pdf"))
+    result = handle_chat_request_service(db, room.id, "다음 질문이야.")
+
+    assert result["assistant_message"] == "답변입니다."
+    assert [m["role"] for m in sent[-1]].count("system") == 1
+    assert len(list_messages_by_room(db, room.id, offset=0, limit=100)) == 4

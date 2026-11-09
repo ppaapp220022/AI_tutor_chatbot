@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from loguru import logger
 from openai import OpenAIError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -25,7 +26,10 @@ from app.backend.service.messages_service import (
     get_message_history_service,
     post_messages_service,
 )
-from app.backend.service.uploaded_files_service import save_upload_file_service
+from app.backend.service.uploaded_files_service import (
+    get_latest_uploaded_file_service,
+    save_upload_file_service,
+)
 
 DEFAULT_PERSONA = "일반 튜터"
 
@@ -95,6 +99,25 @@ def _cleanup_uploaded_file(uploaded) -> None:
     parent_dir = uploaded_path.parent
     if parent_dir.exists() and not any(parent_dir.iterdir()):
         parent_dir.rmdir()
+
+def _load_room_file_text(db, room_id: int, login_id: str | None) -> str:
+    """
+    파일 없이 온 질문에 쓸 대화방 문서 텍스트. 가장 최근 업로드 파일만 쓴다
+    (파일을 올린 요청도 그 파일 하나만 쓰므로 이어지는 질문도 같은 문서를 보게 한다)
+    :param db: 세션
+    :param room_id: 대화방 PK
+    :param login_id: 로그인 아이디
+    :return: 문서 텍스트. 파일이 없거나 읽지 못하면 빈 문자열
+    """
+    latest = get_latest_uploaded_file_service(db, room_id, login_id=login_id)
+    if not latest or not latest.file_path:
+        return ""
+    try:
+        return extract_text_from_file(latest.file_path)
+    except ValueError as exc:
+        # 이번 요청에 올린 파일이 아니므로 질문 자체는 막지 않고 문서 없이 답한다
+        logger.warning(f"대화방 문서를 읽지 못함 - room_id: {room_id}, uploaded_id: {latest.id}, {exc}")
+        return ""
 
 def _to_openai_role(role: Role) -> Literal["user", "assistant"]: # 반환값은 user, assistent 만 가질 수 있도록 명시
     """
@@ -208,6 +231,8 @@ def handle_chat_request_service(
                 file_text = extract_text_from_file(uploaded.file_path)
             except ValueError as exc:
                 raise BadRequestException(str(exc)) from exc
+        else:
+            file_text = _load_room_file_text(db, room_id, login_id)
 
         history = get_message_history_service(db, room_id, MAX_HISTORY_COUNT, login_id=login_id)
 

@@ -8,6 +8,7 @@ from app.backend.repository.uploaded_files_repository import (
     count_uploaded_files_by_room,
     create_uploaded_files,
     list_uploaded_files,
+    find_latest_uploaded_file,
     find_uploaded_files,
     update_uploaded_files,
     delete_uploaded_files
@@ -130,6 +131,21 @@ def get_all_uploaded_files_service(db, room_id: int, pagination: PaginationReque
         "page": pagination.page,
         "size": pagination.size,
     }
+
+# 대화방의 가장 최근 업로드 파일
+def get_latest_uploaded_file_service(db, room_id: int, login_id: str | None = None):
+    """
+    대화방에 가장 최근 업로드된 파일 조회 서비스
+    :param db: 세션
+    :param room_id: 대화방 PK
+    :param login_id: 로그인 아이디
+    :return: 가장 최근 업로드 파일 정보. 없으면 None
+    """
+    room = find_chat_room(db, room_id, login_id=login_id)
+    if not room:
+        raise NotFoundException("채팅방이 존재하지 않습니다.")
+
+    return find_latest_uploaded_file(db, room_id)
 
 # 파일 업로드 단건 검색
 def get_one_uploaded_files_service(db, uploaded_id: int):

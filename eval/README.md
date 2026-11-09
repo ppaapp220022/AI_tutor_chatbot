@@ -28,6 +28,8 @@ uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 바꾸
 | `persona` | 페르소나 지시(`persona_check`)를 따르는가 | `in_doc`과 같음 + 페르소나 위반 없음 |
 | `long_doc` | 12,000자(`MAX_FILE_CONTEXT_LENGTH`)를 넘는 문서 뒷부분을 답하는가 | `in_doc`과 같음 |
 
+문항은 질문 한 번에 문서를 붙여 보내는 경우만 잰다. 어떤 문서를 메시지에 넣는지(예: 파일 없이 이어서 한 질문에 채팅방 문서를 넣는 것)는 DB를 거치는 서비스 로직이므로 `test/service/test_handle_chat_request_service.py`에서 검사한다.
+
 `long_doc` 문항의 `anchor`는 답의 위치를 표시한다. 지금 서비스는 문서를 12,000자에서 자르므로 이 문항은 실패하는 것이 정상이다. 문서 처리 방식(검색, 요약 등)을 바꾼 뒤 통과하는지 본다.
 
 ## 채점
