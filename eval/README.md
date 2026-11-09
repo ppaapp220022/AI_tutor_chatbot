@@ -28,6 +28,7 @@ uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 바꾸
 | `persona` | 페르소나 지시(`persona_check`)를 따르는가 | `in_doc`과 같음 + 페르소나 위반 없음 |
 | `long_doc` | 12,000자(`MAX_FILE_CONTEXT_LENGTH`)를 넘는 문서 뒷부분을 답하는가 | `in_doc`과 같음 |
 | `follow_up` | 이전 대화에 이어지는 질문("그럼…", "그 사람들은…")을 맥락대로 답하는가 | 가리키는 대상을 바르게 이어받고 `in_doc`과 같음 |
+| `unreadable_doc` | 대화방 문서를 읽지 못했을 때(`document_unreadable: true`, `documents: []`) 문서 내용을 지어내지 않는가 | 문서를 읽지 못해 확인할 수 없다고 밝힘. "문서에 없다"고 단정하면 틀림 |
 
 문항에 `history`(이전 대화, `{"role": "user" | "assistant", "content": ...}`를 학생부터 번갈아)를 넣으면, 서비스와 같은 방식으로 이전 대화를 붙여 튜터에게 보내고 judge에게도 보여 준다. 이전 대화의 튜터 답은 문서대로 맞게 써 둔 고정 문장이다. `follow_up`이 아닌 유형(예: `out_of_doc`)에도 쓸 수 있다.
 
