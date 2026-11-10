@@ -4,6 +4,7 @@
     uv run python -m app.evaluation.run sci-in-001 long-001    # 일부만
     uv run python -m app.evaluation.run --model gpt-4o         # 답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4.1-mini)
     uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 (기본: EVAL_JUDGE_MODEL, 없으면 gpt-4o)
+    uv run python -m app.evaluation.run --batch                # Batch API로 (비용 절반, 결과는 몇 분~최대 24시간 뒤)
 
 문항마다 서비스와 같은 build_openai_messages()와 request_chat_completion()으로 답을 만들고(DB는 쓰지 않는다),
 judge가 정답 여부·근거 없는 주장·페르소나 위반을 판정한다. 셋 다 통과해야 pass다. judge 응답 오류는 통과로 치지 않는다.
@@ -24,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from openai import OpenAIError
+from openai.types.chat import ChatCompletionMessageParam
 
 from app.backend.model.messages import Messages, Role
 from app.backend.service import document_context_service
@@ -36,7 +38,7 @@ from app.backend.service.ai_chat_service import (
     build_openai_messages,
 )
 from app.backend.service.ai_client_service import chat_model, request_chat_completion
-from app.evaluation.judge import DEFAULT_CRITERIA, JUDGE_SYSTEM_PROMPT, KIND_CRITERIA, judge, judge_model
+from app.evaluation.judge import DEFAULT_CRITERIA, JUDGE_SYSTEM_PROMPT, KIND_CRITERIA, Verdict, judge, judge_model
 
 EVAL_DIR = Path(__file__).resolve().parents[2] / "eval"
 CASES = EVAL_DIR / "cases.jsonl"
@@ -102,6 +104,34 @@ def load_history(case: dict) -> list[Messages]:
     return [Messages(role=roles[turn["role"]], content=turn["content"]) for turn in case.get("history", [])]
 
 
+def tutor_messages(case: dict) -> list[ChatCompletionMessageParam]:
+    """
+    서비스와 같은 방식으로 만든 튜터 요청 메시지
+    :param case: 평가 문항
+    :return: OpenAI 요청 메시지 목록
+    """
+    return build_openai_messages(
+        load_history(case),
+        case["question"],
+        load_document(case),
+        case["persona"],
+        document_unreadable=case.get("document_unreadable", False),
+    )
+
+
+def apply_verdict(result: Result, verdict: Verdict) -> None:
+    """
+    판정을 결과에 옮긴다
+    :param result: 채점 결과
+    :param verdict: judge 판정
+    """
+    result.status = "pass" if verdict.passed else "fail"
+    result.correct = verdict.correct
+    result.unsupported_claim = verdict.unsupported_claim
+    result.persona_violation = verdict.persona_violation
+    result.reason = verdict.reason
+
+
 def run_one(case: dict) -> Result:
     """
     문항 하나 실행 후 채점
@@ -111,13 +141,7 @@ def run_one(case: dict) -> Result:
     start = time.monotonic()
     result = Result(id=case["id"], kind=case["kind"], persona=case["persona"], status="fail")
     document = load_document(case)
-    messages = build_openai_messages(
-        load_history(case),
-        case["question"],
-        document,
-        case["persona"],
-        document_unreadable=case.get("document_unreadable", False),
-    )
+    messages = tutor_messages(case)
     try:
         result.answer = request_chat_completion(messages)
     except OpenAIError as exc:
@@ -136,11 +160,7 @@ def run_one(case: dict) -> Result:
         result.status = "judge_error"
         result.error = result.error or "judge 응답을 해석하지 못함"
     else:
-        result.status = "pass" if verdict.passed else "fail"
-        result.correct = verdict.correct
-        result.unsupported_claim = verdict.unsupported_claim
-        result.persona_violation = verdict.persona_violation
-        result.reason = verdict.reason
+        apply_verdict(result, verdict)
     result.seconds = round(time.monotonic() - start, 1)
     return result
 
@@ -203,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", help="답변 모델 (기본: OPENAI_CHAT_MODEL, 없으면 gpt-4.1-mini)")
     parser.add_argument("--judge-model", help="judge 모델 (기본: EVAL_JUDGE_MODEL, 없으면 gpt-4o)")
     parser.add_argument("--jobs", type=int, default=4, help="동시에 돌릴 문항 수")
+    parser.add_argument("--batch", action="store_true", help="Batch API로 돌린다. 비용은 절반, 끝날 때까지 기다린다")
+    parser.add_argument("--poll", type=float, default=30, help="--batch일 때 배치 상태를 다시 볼 간격(초)")
     args = parser.parse_args(argv)
 
     if args.model:
@@ -216,8 +238,14 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
 
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run_one, cases))
+    if args.batch:
+        # run을 불러오는 batch 모듈과 서로 import하지 않도록 여기서 불러온다
+        from app.evaluation.batch import run_batch
+
+        results = run_batch(cases, args.poll)
+    else:
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            results = list(pool.map(run_one, cases))
     for r in results:
         detail = f"  {r.error}" if r.error else ""
         if r.status == "fail":
@@ -231,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
         "judge_version": judge_version(),
         "prompt_version": prompt_version(),
         "cases_version": cases_version(),
+        # batch는 문항별 시간이 없고(seconds 0) 비용이 절반이다. 점수는 같은 요청이라 그대로 비교한다
+        "mode": "batch" if args.batch else "direct",
         "finished_at": datetime.now().isoformat(timespec="seconds"),
         "summary": summary,
         "results": [asdict(r) for r in results],

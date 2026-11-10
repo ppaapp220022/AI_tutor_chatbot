@@ -3,6 +3,7 @@
 import json
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 
@@ -107,6 +108,25 @@ def build_judge_input(case: dict, document: str, answer: str) -> str:
     )
 
 
+def judge_request(case: dict, document: str, answer: str) -> dict[str, Any]:
+    """
+    judge 요청 본문. 바로 채점할 때와 Batch API로 채점할 때 같은 요청을 쓴다
+    :param case: 평가 문항
+    :param document: 문서 전체 텍스트
+    :param answer: 튜터 답변
+    :return: chat.completions 요청 인자
+    """
+    return {
+        "model": judge_model(),
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+            {"role": "user", "content": build_judge_input(case, document, answer)},
+        ],
+    }
+
+
 def judge(case: dict, document: str, answer: str) -> Verdict | None:
     """
     튜터 답변 채점. 응답을 해석하지 못하면 다시 묻고, 끝내 실패하면 None
@@ -117,15 +137,7 @@ def judge(case: dict, document: str, answer: str) -> Verdict | None:
     """
     client = OpenAI()
     for _ in range(JUDGE_ATTEMPTS):
-        response = client.chat.completions.create(
-            model=judge_model(),
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
-                {"role": "user", "content": build_judge_input(case, document, answer)},
-            ],
-        )
+        response = client.chat.completions.create(**judge_request(case, document, answer))
         verdict = parse_verdict(response.choices[0].message.content or "")
         if verdict is not None:
             return verdict
