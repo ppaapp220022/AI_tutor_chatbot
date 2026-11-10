@@ -7,7 +7,12 @@ uv run python -m app.evaluation.run                        # 전체
 uv run python -m app.evaluation.run sci-in-001 long-001    # 일부만
 uv run python -m app.evaluation.run --model gpt-4o         # 답변 모델 바꾸기
 uv run python -m app.evaluation.run --judge-model gpt-4.1  # judge 모델 바꾸기
+uv run python -m app.evaluation.run --batch --poll 30      # Batch API로 (비용 절반, 결과는 몇 분~최대 24시간 뒤)
 ```
+
+`--batch`는 답변 배치가 끝나면 그 답변으로 judge 배치를 보낸다. 요청 본문이 바로 돌릴 때와 같아 점수를 그대로 비교한다. 결과 파일의 `mode`가 `batch`이고 문항별 시간은 0이다. 기다리는 동안 프로세스가 살아 있어야 결과 파일이 남는다.
+
+여러 실행을 동시에 띄우지 않는다. 결과 파일 이름이 초 단위라 같은 초에 끝나면 서로 덮어쓴다.
 
 `OPENAI_API_KEY`가 필요하다. DB와 Redis는 쓰지 않는다. 문항 형식과 채점 로직 검사(`test/evaluation/`)는 API 없이 돈다.
 
