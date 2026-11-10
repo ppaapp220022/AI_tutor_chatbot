@@ -24,6 +24,8 @@
 - [프로젝트 구조](#프로젝트-구조)
 - [ERD](#erd)
 - [API 명세](#api-명세)
+- [AI 답변 평가](#ai-답변-평가)
+- [환경 설정](#환경-설정)
 - [트러블슈팅](#트러블슈팅)
 - [소감문](#소감문)
 
@@ -91,6 +93,18 @@ Python만으로 UI를 구성할 수 있어 별도의 프론트엔드 언어 없�
 ### uv
 기존 Python 패키지 관리 도구인 pip + requirements.txt 방식 대신 uv를 도입하였다. 의존성 설치 속도가 pip 대비 월등히 빠르고 pyproject.toml 기반으로 의존성을 관리하여 팀 환경 통일이 용이하다는 점에서 선택하였다.
 
+### 답변 모델 (gpt-4.1-mini)
+같은 프롬프트·평가 문항(26개)·judge(gpt-4o)로 세 모델을 3번씩 돌려 비교하였다([AI 답변 평가](#ai-답변-평가)).
+
+| 모델 | 통과 문항 (3번) | 평균 | 문항당 시간 |
+|---|---|---|---|
+| gpt-4o-mini | 25, 24, 23 | 24.0 | 4.1초 |
+| **gpt-4.1-mini** | 25, 26, 24 | 25.0 | 3.8초 |
+| gpt-5.4-mini | 26, 25, 25 | 25.3 | 5.1초 |
+
+gpt-5.4-mini가 평균 0.3문항 더 통과했지만 문항당 1초 이상 느려서, 점수와 속도가 함께 좋은 gpt-4.1-mini를 기본값으로 정하였다. `OPENAI_CHAT_MODEL`을 설정하면 다른 모델을 쓸 수 있다.
+(prompt 40a384a0f876, judge 692d8b00f787, cases 1667335c2ca6 기준)
+
 ---
 
 ## 주요 기능
@@ -105,6 +119,8 @@ Python만으로 UI를 구성할 수 있어 별도의 프론트엔드 언어 없�
 - 페르소나 선택 후 채팅방 생성
 - PDF 파일 업로드 후 문서 기반 AI 응답 (같은 채팅방에서 파일 없이 이어서 질문해도 가장 최근에 올린 문서를 함께 보냄)
 - 채팅 이력 조회
+- 페르소나(일반 튜터, 수학·영어·과학·역사 전문가)별 지시와, 문서에 없는 내용을 지어내지 않게 하는 공통 지시
+- AI 채팅 요청 횟수 제한: 사용자별 1분 5회, 하루 100회 (Redis, 넘으면 429)
 
 ### 관리자
 - 전체 회원 목록 조회 (페이징)
@@ -133,6 +149,7 @@ ai_tutor_chatbot/
 │   │   ├── schema/              # Pydantic 스키마 (DTO)
 │   │   ├── service/             # 비즈니스 로직
 │   │   └── util/                # 유틸리티 (JWT, Email)
+│   ├── evaluation/              # AI 답변 평가 (실행, judge, Batch API)
 │   └── frontend/
 │       ├── main.py              # Streamlit 진입점
 │       └── pages/               # Streamlit 페이지
@@ -141,9 +158,11 @@ ai_tutor_chatbot/
 │           ├── chat.py
 │           └── admin.py
 ├── test/                        # 테스트 코드
+│   ├── evaluation/
 │   ├── repository/
 │   ├── service/
 │   └── util/
+├── eval/                        # 평가 문항, 학습지, 결과 (README 있음)
 ├── db/
 │   └── init.sql                 # DB 초기화 SQL
 ├── logs/                        # 로그 파일
@@ -227,6 +246,28 @@ uploaded_files
 
 ---
 
+## AI 답변 평가
+
+프롬프트·모델·문서 처리 방식을 바꿀 때 답변이 좋아졌는지 숫자로 비교하려고 만든 평가 도구다. 자세한 문항 형식과 채점 기준은 [eval/README.md](eval/README.md)에 있다.
+
+- **문항 26개** (`eval/cases.jsonl`): 문서 안 질문 8, 문서 밖 질문 6, 페르소나 4, 이어지는 질문 4, 긴 문서 2, 문서를 읽지 못한 경우 2
+- **답변**: 서비스와 같은 함수로 메시지를 만들어 답변 모델에 보낸다 (DB·Redis는 쓰지 않는다)
+- **채점**: 답변 모델보다 강한 judge(gpt-4o)가 정답 여부, 근거 없는 주장, 페르소나 위반을 판정한다. 셋 다 통과해야 pass
+- **버전**: 결과 파일에 답변 모델·judge 모델·judge 버전·프롬프트 버전·문항 버전이 함께 남고, 버전이 다른 점수끼리는 비교하지 않는다
+
+```bash
+uv run python -m app.evaluation.run                        # 전체
+uv run python -m app.evaluation.run sci-in-001 long-001    # 일부만
+uv run python -m app.evaluation.run --model gpt-4o         # 답변 모델 바꾸기
+uv run python -m app.evaluation.run --batch                # Batch API (비용 절반, 결과는 몇 분~최대 24시간 뒤)
+```
+
+**현재 기준선**: gpt-4.1-mini, judge gpt-4o, 3번 돌려 25, 25, 26 / 26 (prompt 94c1a636baec, judge 692d8b00f787, cases a3e1da62c1c7)
+
+**알려진 약점 — `sci-persona-001`**: 과학 전문가에게 "더우면 광합성이 왜 줄어드는지" 묻는 문항으로, 생활 속 예시가 빠지면 실패한다. 프롬프트로 예시를 강제해 보았지만 모델이 "더운 날 잎이 시드는 것은 효소 때문"이라는 오개념을 반복하였다(실제로는 주로 수분 손실 때문). 점수를 올리려다 틀린 과학을 가르치게 되어 프롬프트는 되돌리고, 이 문항을 알려진 약점으로 남겨 두었다.
+
+---
+
 ## 환경 설정
 
 ### .env 설정
@@ -242,6 +283,17 @@ JWT_ACCESS_EXPIRE_MINUTES=30
 JWT_REFRESH_EXPIRE_DAYS=7
 OPENAI_API_KEY=your_openai_api_key
 ```
+
+선택 값 (없으면 기본값을 쓴다)
+
+| 이름 | 기본값 | 설명 |
+|---|---|---|
+| `OPENAI_CHAT_MODEL` | `gpt-4.1-mini` | 답변 모델 |
+| `AI_CHAT_LIMIT_PER_MINUTE` | `5` | 사용자별 1분 AI 채팅 요청 수. 0이면 제한하지 않음 |
+| `AI_CHAT_LIMIT_PER_DAY` | `100` | 사용자별 하루 AI 채팅 요청 수. 0이면 제한하지 않음 |
+| `EVAL_JUDGE_MODEL` | `gpt-4o` | 평가 judge 모델 |
+
+공개 배포 전에는 OpenAI 대시보드에서 프로젝트 월 예산(usage limit)도 설정한다. 요청 횟수 제한은 사용자 한 명이 몰아 쓰는 것을 막을 뿐, 전체 비용 상한은 아니다.
 
 ### 실행 방법
 ```bash
